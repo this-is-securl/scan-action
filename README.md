@@ -168,7 +168,7 @@ Use this action only against targets you own or are authorised to assess. SecURL
 ## Powered by
 
 [SecURL](https://securl.online) — passive external security posture analysis.  
-[`@ktbatterham/external-posture-core`](https://www.npmjs.com/package/@ktbatterham/external-posture-core) — the open-source engine.
+[`@securl/core`](https://www.npmjs.com/package/@securl/core) — the open-source engine.
 
 ---
 
