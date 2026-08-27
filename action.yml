@@ -252,14 +252,14 @@ runs:
 
     - name: Upload SARIF to GitHub Code Scanning
       if: ${{ inputs.upload-sarif == 'true' && always() && steps.scan.outputs.sarif_path != '' }}
-      uses: github/codeql-action/upload-sarif@6f5948dfacef28e207b48d0905cf90c03365536d
+      uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28
       with:
         sarif_file: ${{ steps.scan.outputs.sarif_path }}
         category: securl-external-posture
 
     - name: Create or update pull-request summary
       if: ${{ inputs.post-pr-comment == 'true' && github.event_name == 'pull_request' && always() && steps.scan.outputs.report_path != '' }}
-      uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
       env:
         SECURL_REPORT_PATH: ${{ steps.scan.outputs.report_path }}
         SECURL_PASSED: ${{ steps.scan.outputs.passed }}
