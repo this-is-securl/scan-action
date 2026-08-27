@@ -1,0 +1,61 @@
+name: Action checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out action
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Run local SecURL action
+        id: securl
+        uses: ./
+        with:
+          url: https://securl.online
+          scan-mode: quiet
+
+      - name: Verify outputs and artifacts
+        shell: bash
+        env:
+          SECURL_SCORE: ${{ steps.securl.outputs.score }}
+          SECURL_GRADE: ${{ steps.securl.outputs.grade }}
+          SECURL_PASSED: ${{ steps.securl.outputs.passed }}
+          SECURL_REPORT_PATH: ${{ steps.securl.outputs.report-path }}
+          SECURL_SARIF_PATH: ${{ steps.securl.outputs.sarif-path }}
+        run: |
+          set -euo pipefail
+          [[ "$SECURL_SCORE" =~ ^[0-9]+$ ]]
+          [[ "$SECURL_GRADE" =~ ^[A-F]$ ]]
+          [[ "$SECURL_PASSED" == "true" ]]
+          [[ -s "$SECURL_REPORT_PATH" ]]
+          [[ -s "$SECURL_SARIF_PATH" ]]
+          node -e 'JSON.parse(require("node:fs").readFileSync(process.env.SECURL_REPORT_PATH, "utf8"))'
+          node -e 'const s = JSON.parse(require("node:fs").readFileSync(process.env.SECURL_SARIF_PATH, "utf8")); if (s.version !== "2.1.0") process.exit(1)'
+
+  invalid-input:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out action
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Reject unsupported scan mode
+        id: invalid
+        continue-on-error: true
+        uses: ./
+        with:
+          url: https://securl.online
+          scan-mode: active
+
+      - name: Confirm validation failed
+        if: ${{ steps.invalid.outcome != 'failure' }}
+        shell: bash
+        run: exit 1

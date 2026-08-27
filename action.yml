@@ -1,367 +1,293 @@
-name: 'SecURL Security Posture Scan'
-description: 'Passive external security posture analysis for public web targets — scores, grades, SARIF findings, and CI policy gates.'
-author: 'SecURL'
+name: SecURL Website Posture Scan
+description: Passive external website posture evidence, summaries, and optional CI policy gates.
+author: SecURL
 
 branding:
-  icon: 'shield'
-  color: 'blue'
+  icon: shield
+  color: blue
 
 inputs:
   url:
-    description: 'Target URL to scan (e.g. https://example.com). Required unless targets is set.'
+    description: Public URL or hostname to assess. Required unless targets is set.
     required: false
-
   targets:
-    description: 'Space-separated list of URLs to scan in one run. Use instead of url for multi-target scans.'
+    description: Space-separated public URLs or hostnames. Use instead of url for multiple targets.
     required: false
-
   scan-mode:
-    description: 'Scan depth: default | quiet | deep-passive. quiet is recommended for high-frequency CI gates.'
+    description: Scan mode, one of quiet, standard, or deep-passive.
     required: false
-    default: 'quiet'
-
+    default: quiet
   fail-on:
-    description: 'Fail the job when findings at this severity or above are present. Values: critical | warning | info'
+    description: Optional finding gate, one of critical, warning, or info.
     required: false
-    default: ''
-
+    default: ""
   fail-if-score-below:
-    description: 'Fail the job when any target score drops below this value (0–100).'
+    description: Optional minimum score from 0 to 100.
     required: false
-    default: ''
-
+    default: ""
   fail-on-regression:
-    description: 'Fail the job when a regression is detected against the baseline file.'
+    description: Fail when the current result regresses against the baseline file.
     required: false
-    default: 'false'
-
+    default: "false"
   baseline:
-    description: 'Path to a previously saved JSON report to compare against. Enables regression detection.'
+    description: Path to a SecURL JSON report used as a regression baseline.
     required: false
-    default: ''
-
+    default: ""
   upload-sarif:
-    description: 'Upload SARIF results to GitHub Code Scanning (requires code-scanning write permission).'
+    description: Upload findings to GitHub Code Scanning. Requires security-events write permission.
     required: false
-    default: 'true'
-
+    default: "false"
   post-pr-comment:
-    description: 'Post a posture summary comment on the pull request (requires pull-requests write permission).'
+    description: Create or update a pull-request summary. Requires pull-requests write permission.
     required: false
-    default: 'true'
-
-  format:
-    description: 'Output format for the step summary: summary | markdown | json. Defaults to summary.'
-    required: false
-    default: 'summary'
-
+    default: "false"
   node-version:
-    description: 'Node.js version to use. Must be 22 or higher.'
+    description: Node.js version. SecURL requires Node.js 22 or newer.
     required: false
-    default: '22'
+    default: "22"
 
 outputs:
   score:
-    description: 'Posture score (0–100) for the primary target.'
+    description: Posture score for the first target.
     value: ${{ steps.scan.outputs.score }}
-
   grade:
-    description: 'Posture grade (A–F) for the primary target.'
+    description: Posture grade for the first target.
     value: ${{ steps.scan.outputs.grade }}
-
   critical-count:
-    description: 'Number of critical findings.'
+    description: Critical findings across all targets.
     value: ${{ steps.scan.outputs.critical_count }}
-
   warning-count:
-    description: 'Number of warning findings.'
+    description: Warning findings across all targets.
     value: ${{ steps.scan.outputs.warning_count }}
-
   passed:
-    description: 'true if all CI policy gates passed, false if any failed.'
+    description: true when the assessment completed and every configured policy gate passed.
     value: ${{ steps.scan.outputs.passed }}
-
   report-path:
-    description: 'Path to the full JSON report written by this action.'
+    description: Path to the full SecURL JSON report.
     value: ${{ steps.scan.outputs.report_path }}
-
   sarif-path:
-    description: 'Path to the SARIF file written by this action (if upload-sarif is true).'
+    description: Path to the generated SARIF document.
     value: ${{ steps.scan.outputs.sarif_path }}
 
 runs:
-  using: 'composite'
+  using: composite
   steps:
     - name: Set up Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Build scan command
-      id: build-cmd
-      shell: bash
-      run: |
-        TARGETS="${{ inputs.targets }}"
-        URL="${{ inputs.url }}"
-
-        if [ -z "$TARGETS" ] && [ -z "$URL" ]; then
-          echo "::error::Either 'url' or 'targets' input must be provided."
-          exit 1
-        fi
-
-        if [ -n "$TARGETS" ]; then
-          SCAN_TARGETS="$TARGETS"
-        else
-          SCAN_TARGETS="$URL"
-        fi
-
-        CMD="npx --yes @ktbatterham/external-posture-core@latest scan $SCAN_TARGETS"
-
-        # Scan mode
-        MODE="${{ inputs.scan-mode }}"
-        if [ "$MODE" = "quiet" ]; then
-          CMD="$CMD --quiet"
-        elif [ "$MODE" = "deep-passive" ]; then
-          CMD="$CMD --deep-passive"
-        fi
-
-        # Output format
-        CMD="$CMD --format ci-json"
-        CMD="$CMD --output ${{ runner.temp }}/securl-report.json"
-
-        # CI policy flags
-        FAIL_ON="${{ inputs.fail-on }}"
-        if [ -n "$FAIL_ON" ]; then
-          CMD="$CMD --fail-on $FAIL_ON"
-        fi
-
-        FAIL_BELOW="${{ inputs.fail-if-score-below }}"
-        if [ -n "$FAIL_BELOW" ]; then
-          CMD="$CMD --fail-if-score-below $FAIL_BELOW"
-        fi
-
-        BASELINE="${{ inputs.baseline }}"
-        if [ -n "$BASELINE" ] && [ -f "$BASELINE" ]; then
-          CMD="$CMD --baseline $BASELINE"
-          if [ "${{ inputs.fail-on-regression }}" = "true" ]; then
-            CMD="$CMD --fail-on-regression"
-          fi
-        fi
-
-        echo "cmd=$CMD" >> $GITHUB_OUTPUT
-        echo "report_path=${{ runner.temp }}/securl-report.json" >> $GITHUB_OUTPUT
-        echo "sarif_path=${{ runner.temp }}/securl-findings.sarif" >> $GITHUB_OUTPUT
-
-    - name: Run SecURL scan
+    - name: Generate external posture evidence
       id: scan
       shell: bash
+      env:
+        SECURL_URL: ${{ inputs.url }}
+        SECURL_TARGETS: ${{ inputs.targets }}
+        SECURL_SCAN_MODE: ${{ inputs.scan-mode }}
+        SECURL_FAIL_ON: ${{ inputs.fail-on }}
+        SECURL_FAIL_IF_SCORE_BELOW: ${{ inputs.fail-if-score-below }}
+        SECURL_FAIL_ON_REGRESSION: ${{ inputs.fail-on-regression }}
+        SECURL_BASELINE: ${{ inputs.baseline }}
+        SECURL_REPORT_PATH: ${{ runner.temp }}/securl-report.json
+        SECURL_SARIF_PATH: ${{ runner.temp }}/securl-findings.sarif
+        npm_config_ignore_scripts: "true"
       run: |
+        set -euo pipefail
+
+        if [[ -n "$SECURL_URL" && -n "$SECURL_TARGETS" ]]; then
+          echo "::error::Use either 'url' or 'targets', not both."
+          exit 2
+        fi
+
+        raw_targets="${SECURL_TARGETS:-$SECURL_URL}"
+        if [[ -z "$raw_targets" ]]; then
+          echo "::error::Either 'url' or 'targets' is required."
+          exit 2
+        fi
+        if [[ "$raw_targets" == *$'\n'* || "$raw_targets" == *$'\r'* ]]; then
+          echo "::error::Targets must be provided on one line, separated by spaces."
+          exit 2
+        fi
+
+        read -r -a scan_targets <<< "$raw_targets"
+        for target in "${scan_targets[@]}"; do
+          if [[ "$target" == -* ]]; then
+            echo "::error::Invalid target input. Provide public URLs or hostnames separated by spaces."
+            exit 2
+          fi
+        done
+
+        scan_args=()
+        case "$SECURL_SCAN_MODE" in
+          quiet) scan_args+=(--quiet) ;;
+          standard) ;;
+          deep-passive) scan_args+=(--deep-passive) ;;
+          *) echo "::error::scan-mode must be quiet, standard, or deep-passive."; exit 2 ;;
+        esac
+
+        if [[ -n "$SECURL_FAIL_ON" ]]; then
+          case "$SECURL_FAIL_ON" in
+            critical|warning|info) scan_args+=(--fail-on "$SECURL_FAIL_ON") ;;
+            *) echo "::error::fail-on must be critical, warning, or info."; exit 2 ;;
+          esac
+        fi
+
+        if [[ -n "$SECURL_FAIL_IF_SCORE_BELOW" ]]; then
+          if [[ ! "$SECURL_FAIL_IF_SCORE_BELOW" =~ ^([0-9]|[1-9][0-9]|100)$ ]]; then
+            echo "::error::fail-if-score-below must be an integer from 0 to 100."
+            exit 2
+          fi
+          scan_args+=(--fail-if-score-below "$SECURL_FAIL_IF_SCORE_BELOW")
+        fi
+
+        if [[ -n "$SECURL_BASELINE" ]]; then
+          if [[ ! -f "$SECURL_BASELINE" ]]; then
+            echo "::error::The baseline file does not exist: $SECURL_BASELINE"
+            exit 2
+          fi
+          scan_args+=(--baseline "$SECURL_BASELINE")
+          if [[ "$SECURL_FAIL_ON_REGRESSION" == "true" ]]; then
+            scan_args+=(--fail-on-regression)
+          elif [[ "$SECURL_FAIL_ON_REGRESSION" != "false" ]]; then
+            echo "::error::fail-on-regression must be true or false."
+            exit 2
+          fi
+        elif [[ "$SECURL_FAIL_ON_REGRESSION" != "false" ]]; then
+          echo "::error::fail-on-regression requires a baseline file."
+          exit 2
+        fi
+
         set +e
-        ${{ steps.build-cmd.outputs.cmd }}
-        SCAN_EXIT=$?
+        npm exec --yes --package=securl@1.28.6 -- securl scan "${scan_targets[@]}" \
+          "${scan_args[@]}" \
+          --format json \
+          --output "$SECURL_REPORT_PATH" \
+          --github-summary "$GITHUB_STEP_SUMMARY"
+        scan_exit=$?
         set -e
 
-        REPORT="${{ steps.build-cmd.outputs.report_path }}"
-
-        if [ ! -f "$REPORT" ]; then
-          echo "::error::SecURL scan did not produce a report. Check that the target URL is publicly reachable."
+        if [[ ! -s "$SECURL_REPORT_PATH" ]]; then
+          echo "::error::SecURL did not produce a report. Confirm that the public target is reachable."
           exit 1
         fi
 
-        # Parse key metrics from ci-json output
-        SCORE=$(node -e "
-          const r = JSON.parse(require('fs').readFileSync('$REPORT','utf8'));
-          const analyses = r.analyses ?? [r];
-          const first = analyses[0];
-          console.log(first?.analysis?.score ?? first?.score ?? 0);
-        " 2>/dev/null || echo "0")
+        SECURL_SCAN_EXIT="$scan_exit" node <<'NODE'
+        const fs = require("node:fs");
+        const reportPath = process.env.SECURL_REPORT_PATH;
+        const sarifPath = process.env.SECURL_SARIF_PATH;
+        const parsed = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+        const analyses = Array.isArray(parsed) ? parsed : [parsed];
+        const primary = analyses[0] ?? {};
+        const issues = analyses.flatMap((entry) => Array.isArray(entry.issues) ? entry.issues : []);
+        const critical = issues.filter((issue) => issue.severity === "critical").length;
+        const warning = issues.filter((issue) => issue.severity === "warning").length;
+        const scanExit = Number(process.env.SECURL_SCAN_EXIT || "1");
 
-        GRADE=$(node -e "
-          const r = JSON.parse(require('fs').readFileSync('$REPORT','utf8'));
-          const analyses = r.analyses ?? [r];
-          const first = analyses[0];
-          console.log(first?.analysis?.grade ?? first?.grade ?? 'F');
-        " 2>/dev/null || echo "F")
+        const output = [
+          `score=${primary.score ?? 0}`,
+          `grade=${primary.grade ?? "?"}`,
+          `critical_count=${critical}`,
+          `warning_count=${warning}`,
+          `passed=${scanExit === 0}`,
+          `report_path=${reportPath}`,
+          `sarif_path=${sarifPath}`,
+        ].join("\n") + "\n";
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, output);
 
-        CRITICAL=$(node -e "
-          const r = JSON.parse(require('fs').readFileSync('$REPORT','utf8'));
-          const analyses = r.analyses ?? [r];
-          let count = 0;
-          for (const a of analyses) {
-            const issues = a?.analysis?.issues ?? a?.issues ?? [];
-            count += issues.filter(i => i.severity === 'critical').length;
-          }
-          console.log(count);
-        " 2>/dev/null || echo "0")
-
-        WARNING=$(node -e "
-          const r = JSON.parse(require('fs').readFileSync('$REPORT','utf8'));
-          const analyses = r.analyses ?? [r];
-          let count = 0;
-          for (const a of analyses) {
-            const issues = a?.analysis?.issues ?? a?.issues ?? [];
-            count += issues.filter(i => i.severity === 'warning').length;
-          }
-          console.log(count);
-        " 2>/dev/null || echo "0")
-
-        PASSED="true"
-        if [ "$SCAN_EXIT" -ne 0 ]; then
-          PASSED="false"
-        fi
-
-        echo "score=$SCORE" >> $GITHUB_OUTPUT
-        echo "grade=$GRADE" >> $GITHUB_OUTPUT
-        echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
-        echo "warning_count=$WARNING" >> $GITHUB_OUTPUT
-        echo "passed=$PASSED" >> $GITHUB_OUTPUT
-        echo "report_path=$REPORT" >> $GITHUB_OUTPUT
-        echo "sarif_path=${{ steps.build-cmd.outputs.sarif_path }}" >> $GITHUB_OUTPUT
-
-        # Generate SARIF output for GitHub Code Scanning
-        node -e "
-          const fs = require('fs');
-          const r = JSON.parse(fs.readFileSync('$REPORT', 'utf8'));
-          const analyses = r.analyses ?? [r];
-          const rules = [];
-          const results = [];
-          const ruleIds = new Set();
-
-          for (const entry of analyses) {
-            const analysis = entry?.analysis ?? entry;
-            const issues = analysis?.issues ?? [];
-            const targetUri = (analysis?.url ?? '${{ inputs.url }}').replace(/^https?:\/\//, '');
-
-            for (const issue of issues) {
-              const ruleId = issue.id ?? issue.title?.replace(/\s+/g, '-').toLowerCase() ?? 'unknown';
-              if (!ruleIds.has(ruleId)) {
-                ruleIds.add(ruleId);
-                const tags = [];
-                if (issue.owasp) tags.push('owasp:' + issue.owasp);
-                if (issue.mitre) tags.push('mitre:' + issue.mitre);
-                rules.push({
-                  id: ruleId,
-                  name: issue.title ?? ruleId,
-                  shortDescription: { text: issue.title ?? ruleId },
-                  fullDescription: { text: issue.description ?? issue.title ?? ruleId },
-                  helpUri: 'https://securl.online',
-                  properties: { tags, 'security-severity': issue.severity === 'critical' ? '9.0' : issue.severity === 'warning' ? '5.0' : '2.0' }
-                });
-              }
-              results.push({
-                ruleId,
-                message: { text: issue.recommendation ?? issue.description ?? issue.title ?? '' },
-                locations: [{ physicalLocation: { artifactLocation: { uri: targetUri, uriBaseId: '%SRCROOT%' } } }],
-                level: issue.severity === 'critical' ? 'error' : issue.severity === 'warning' ? 'warning' : 'note',
-                properties: { score: analysis.score, grade: analysis.grade }
+        const ruleIds = new Set();
+        const rules = [];
+        const results = [];
+        for (const analysis of analyses) {
+          const target = analysis.finalUrl || analysis.normalizedUrl || analysis.inputUrl || "public-target";
+          for (const issue of Array.isArray(analysis.issues) ? analysis.issues : []) {
+            const baseId = issue.id || issue.title || "securl-finding";
+            const ruleId = String(baseId).toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+            if (!ruleIds.has(ruleId)) {
+              ruleIds.add(ruleId);
+              rules.push({
+                id: ruleId,
+                name: issue.title || ruleId,
+                shortDescription: { text: issue.title || ruleId },
+                fullDescription: { text: issue.description || issue.title || ruleId },
+                helpUri: "https://securl.online",
+                properties: {
+                  tags: ["security", "external-posture"],
+                  "security-severity": issue.severity === "critical" ? "9.0" : issue.severity === "warning" ? "5.0" : "2.0",
+                },
               });
             }
+            results.push({
+              ruleId,
+              level: issue.severity === "critical" ? "error" : issue.severity === "warning" ? "warning" : "note",
+              message: { text: issue.recommendation || issue.description || issue.title || "SecURL finding" },
+              locations: [{ physicalLocation: { artifactLocation: { uri: target } } }],
+              properties: { target, score: analysis.score, grade: analysis.grade },
+            });
           }
+        }
 
-          const sarif = {
-            '\$schema': 'https://json.schemastore.org/sarif-2.1.0.json',
-            version: '2.1.0',
-            runs: [{
-              tool: {
-                driver: {
-                  name: 'SecURL',
-                  version: '1.4.0',
-                  informationUri: 'https://securl.online',
-                  rules
-                }
+        const sarif = {
+          $schema: "https://json.schemastore.org/sarif-2.1.0.json",
+          version: "2.1.0",
+          runs: [{
+            tool: {
+              driver: {
+                name: "SecURL",
+                version: "1.28.6",
+                informationUri: "https://securl.online",
+                rules,
               },
-              results,
-              automationDetails: { id: 'securl/external-posture-scan' }
-            }]
-          };
+            },
+            results,
+            automationDetails: { id: "securl/external-posture" },
+          }],
+        };
+        fs.writeFileSync(sarifPath, JSON.stringify(sarif, null, 2));
+        NODE
 
-          fs.writeFileSync('${{ steps.build-cmd.outputs.sarif_path }}', JSON.stringify(sarif, null, 2));
-          process.stderr.write('SARIF written: ' + results.length + ' findings\n');
-        " 2>&1
-
-        # Write step summary
-        node -e "
-          const fs = require('fs');
-          const r = JSON.parse(fs.readFileSync('$REPORT', 'utf8'));
-          const analyses = r.analyses ?? [r];
-          let md = '## SecURL Security Posture Scan\n\n';
-          md += '| Target | Grade | Score | Critical | Warning |\n';
-          md += '|--------|-------|-------|----------|---------|\n';
-          for (const entry of analyses) {
-            const a = entry?.analysis ?? entry;
-            const url = a?.url ?? '';
-            const grade = a?.grade ?? '?';
-            const score = a?.score ?? '?';
-            const issues = a?.issues ?? [];
-            const critical = issues.filter(i => i.severity === 'critical').length;
-            const warning = issues.filter(i => i.severity === 'warning').length;
-            const gradeEmoji = grade === 'A' ? '🟢' : grade === 'B' ? '🟡' : grade === 'C' ? '🟠' : '🔴';
-            md += \`| \${url} | \${gradeEmoji} \${grade} | \${score}/100 | \${critical} | \${warning} |\n\`;
-          }
-          md += '\n> Powered by [SecURL](https://securl.online) — passive external security posture analysis.\n';
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);
-        " 2>/dev/null || true
-
-        # Propagate policy exit code
-        if [ "$SCAN_EXIT" -ne 0 ]; then
-          echo "::error::SecURL policy gate failed (exit $SCAN_EXIT). Review findings above."
-          exit $SCAN_EXIT
+        if [[ "$scan_exit" -ne 0 ]]; then
+          echo "::error::SecURL assessment or configured policy gate failed with exit code $scan_exit."
+          exit "$scan_exit"
         fi
 
     - name: Upload SARIF to GitHub Code Scanning
-      if: ${{ inputs.upload-sarif == 'true' && always() }}
-      uses: github/codeql-action/upload-sarif@v3
+      if: ${{ inputs.upload-sarif == 'true' && always() && steps.scan.outputs.sarif_path != '' }}
+      uses: github/codeql-action/upload-sarif@6f5948dfacef28e207b48d0905cf90c03365536d
       with:
         sarif_file: ${{ steps.scan.outputs.sarif_path }}
         category: securl-external-posture
-      continue-on-error: true
 
-    - name: Post PR comment
-      if: ${{ inputs.post-pr-comment == 'true' && github.event_name == 'pull_request' && always() }}
-      uses: actions/github-script@v7
+    - name: Create or update pull-request summary
+      if: ${{ inputs.post-pr-comment == 'true' && github.event_name == 'pull_request' && always() && steps.scan.outputs.report_path != '' }}
+      uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+      env:
+        SECURL_REPORT_PATH: ${{ steps.scan.outputs.report_path }}
+        SECURL_PASSED: ${{ steps.scan.outputs.passed }}
       with:
         script: |
-          const fs = require('fs');
-          const reportPath = '${{ steps.scan.outputs.report_path }}';
-
-          if (!fs.existsSync(reportPath)) return;
-
-          const r = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-          const analyses = r.analyses ?? [r];
-          const passed = '${{ steps.scan.outputs.passed }}' === 'true';
-          const statusEmoji = passed ? '✅' : '❌';
-
-          let body = `## ${statusEmoji} SecURL External Posture Scan\n\n`;
-          body += `| Target | Grade | Score | Critical | Warning |\n`;
-          body += `|--------|-------|-------|----------|---------|\n`;
-
-          for (const entry of analyses) {
-            const a = entry?.analysis ?? entry;
-            const url = a?.url ?? '';
-            const grade = a?.grade ?? '?';
-            const score = a?.score ?? '?';
-            const issues = a?.issues ?? [];
-            const critical = issues.filter(i => i.severity === 'critical').length;
-            const warning = issues.filter(i => i.severity === 'warning').length;
-            const gradeEmoji = grade === 'A' ? '🟢' : grade === 'B' ? '🟡' : grade === 'C' ? '🟠' : '🔴';
-            body += `| \`${url}\` | ${gradeEmoji} ${grade} | ${score}/100 | ${critical} | ${warning} |\n`;
+          const fs = require("node:fs");
+          const parsed = JSON.parse(fs.readFileSync(process.env.SECURL_REPORT_PATH, "utf8"));
+          const analyses = Array.isArray(parsed) ? parsed : [parsed];
+          const passed = process.env.SECURL_PASSED === "true";
+          let body = `## ${passed ? "Passed" : "Attention required"}: SecURL external posture\n\n`;
+          body += "| Target | Grade | Score | Critical | Warning |\n";
+          body += "| --- | :---: | ---: | ---: | ---: |\n";
+          for (const analysis of analyses) {
+            const issues = Array.isArray(analysis.issues) ? analysis.issues : [];
+            const critical = issues.filter((issue) => issue.severity === "critical").length;
+            const warning = issues.filter((issue) => issue.severity === "warning").length;
+            const target = analysis.finalUrl || analysis.normalizedUrl || analysis.inputUrl || "public target";
+            body += `| ${target} | ${analysis.grade ?? "?"} | ${analysis.score ?? "?"} | ${critical} | ${warning} |\n`;
           }
+          body += "\nPassive external evidence from [SecURL](https://securl.online). No credentials or repository contents were sent to SecURL.\n";
 
-          if (!passed) {
-            body += `\n> ⚠️ One or more policy gates failed. Review the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.\n`;
-          }
-
-          body += `\n<sub>Powered by [SecURL](https://securl.online) — passive external security posture analysis.</sub>`;
-
-          // Find and update existing comment or create new one
+          const marker = "SecURL external posture";
           const { data: comments } = await github.rest.issues.listComments({
             owner: context.repo.owner,
             repo: context.repo.repo,
             issue_number: context.issue.number,
           });
-
-          const existing = comments.find(c => c.body.includes('SecURL External Posture Scan'));
-
+          const existing = comments.find((comment) => comment.user?.type === "Bot" && comment.body?.includes(marker));
           if (existing) {
             await github.rest.issues.updateComment({
               owner: context.repo.owner,
