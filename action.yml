@@ -73,7 +73,7 @@ runs:
   using: composite
   steps:
     - name: Set up Node.js
-      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
       with:
         node-version: ${{ inputs.node-version }}
 
@@ -252,14 +252,14 @@ runs:
 
     - name: Upload SARIF to GitHub Code Scanning
       if: ${{ inputs.upload-sarif == 'true' && always() && steps.scan.outputs.sarif_path != '' }}
-      uses: github/codeql-action/upload-sarif@6f5948dfacef28e207b48d0905cf90c03365536d
+      uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938
       with:
         sarif_file: ${{ steps.scan.outputs.sarif_path }}
         category: securl-external-posture
 
     - name: Create or update pull-request summary
       if: ${{ inputs.post-pr-comment == 'true' && github.event_name == 'pull_request' && always() && steps.scan.outputs.report_path != '' }}
-      uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
       env:
         SECURL_REPORT_PATH: ${{ steps.scan.outputs.report_path }}
         SECURL_PASSED: ${{ steps.scan.outputs.passed }}
