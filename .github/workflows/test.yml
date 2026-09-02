@@ -15,10 +15,12 @@ jobs:
     steps:
       - name: Check out action
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Run local SecURL action
         id: securl
-        uses: ./
+        uses: $/
         with:
           url: https://securl.online
           scan-mode: quiet
@@ -46,11 +48,13 @@ jobs:
     steps:
       - name: Check out action
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Reject unsupported scan mode
         id: invalid
         continue-on-error: true
-        uses: ./
+        uses: $/
         with:
           url: https://securl.online
           scan-mode: active
