@@ -252,7 +252,7 @@ runs:
 
     - name: Upload SARIF to GitHub Code Scanning
       if: ${{ inputs.upload-sarif == 'true' && always() && steps.scan.outputs.sarif_path != '' }}
-      uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938
+      uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63
       with:
         sarif_file: ${{ steps.scan.outputs.sarif_path }}
         category: securl-external-posture
