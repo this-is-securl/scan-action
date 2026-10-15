@@ -73,7 +73,7 @@ runs:
   using: composite
   steps:
     - name: Set up Node.js
-      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
       with:
         node-version: ${{ inputs.node-version }}
 
@@ -252,7 +252,7 @@ runs:
 
     - name: Upload SARIF to GitHub Code Scanning
       if: ${{ inputs.upload-sarif == 'true' && always() && steps.scan.outputs.sarif_path != '' }}
-      uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938
+      uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d
       with:
         sarif_file: ${{ steps.scan.outputs.sarif_path }}
         category: securl-external-posture
